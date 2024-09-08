@@ -1,65 +1,52 @@
-#include <iostream>
-#include <algorithm>
-#include <fstream>
-#include <chrono>
-#include <vector>
-#include <queue>
-#include <thread>
-#include <mutex>
-#include <Eigen/Dense>
+// =============================================================================
+// Common includes and abstract classes.
+// =============================================================================
+// License: MIT
+// Author: Yuxuan Zhang (zhangyuxuan@ufl.edu)
+// =============================================================================
 
-#include <ros/ros.h>
-#include <ros/time.h>
-#include <cv_bridge/cv_bridge.h>
-#include <opencv2/opencv.hpp>
-#include <opencv2/core/core.hpp>
-#include <opencv2/core/eigen.hpp>
-#include <tf/transform_broadcaster.h>
-#include <image_transport/image_transport.h>
+#pragma once
 
-#include <std_msgs/Header.h>
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <nav_msgs/Odometry.h>
-#include <visualization_msgs/Marker.h>
+#include <algorithm> // IWYU pragma: export
+#include <chrono>    // IWYU pragma: export
+#include <cmath>     // IWYU pragma: export
+#include <fstream>   // IWYU pragma: export
+#include <iostream>  // IWYU pragma: export
+#include <memory>    // IWYU pragma: export
+#include <mutex>     // IWYU pragma: export
+#include <queue>     // IWYU pragma: export
+#include <string>    // IWYU pragma: export
+#include <thread>    // IWYU pragma: export
+#include <vector>    // IWYU pragma: export
 
-#include <message_filters/subscriber.h>
-#include <message_filters/time_synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
+#include <rclcpp/rclcpp.hpp>               // IWYU pragma: export
+#include <sensor_msgs/image_encodings.hpp> // IWYU pragma: export
 
-#include <orb_slam3_ros/SaveMap.h> // This file is created automatically, see here http://wiki.ros.org/ROS/Tutorials/CreatingMsgAndSrv#Creating_a_srv
+#include "slam.h"
 
-// ORB-SLAM3-specific libraries
-#include "System.h"
-#include "ImuTypes.h"
-
-extern ORB_SLAM3::System* pSLAM;
-extern ORB_SLAM3::System::eSensor sensor_type;
-
-extern std::string world_frame_id, cam_frame_id, imu_frame_id;
-
-extern ros::Publisher pose_pub, odom_pub, kf_markers_pub;
-extern ros::Publisher tracked_mappoints_pub, all_mappoints_pub;
-extern image_transport::Publisher tracking_img_pub;
-
-void setup_services(ros::NodeHandle&, std::string);
-void setup_publishers(ros::NodeHandle&, image_transport::ImageTransport&, std::string);
-void publish_topics(ros::Time, Eigen::Vector3f = Eigen::Vector3f::Zero());
-
-void publish_camera_pose(Sophus::SE3f, ros::Time);
-void publish_tracking_img(cv::Mat, ros::Time);
-void publish_tracked_points(std::vector<ORB_SLAM3::MapPoint*>, ros::Time);
-void publish_keypoints(std::vector<ORB_SLAM3::MapPoint*>, std::vector<cv::KeyPoint>, ros::Time);
-sensor_msgs::PointCloud2 keypoints_to_pointcloud(std::vector<cv::KeyPoint>&, ros::Time);
-
-void publish_all_points(std::vector<ORB_SLAM3::MapPoint*>, ros::Time);
-void publish_tf_transform(Sophus::SE3f, string, string, ros::Time);
-void publish_body_odom(Sophus::SE3f, Eigen::Vector3f, Eigen::Vector3f, ros::Time);
-void publish_kf_markers(std::vector<Sophus::SE3f>, ros::Time);
-
-bool save_map_srv(orb_slam3_ros::SaveMap::Request&, orb_slam3_ros::SaveMap::Response&);
-bool save_traj_srv(orb_slam3_ros::SaveMap::Request&, orb_slam3_ros::SaveMap::Response&);
-
-cv::Mat SE3f_to_cvMat(Sophus::SE3f);
-tf::Transform SE3f_to_tfTransform(Sophus::SE3f);
-sensor_msgs::PointCloud2 mappoint_to_pointcloud(std::vector<ORB_SLAM3::MapPoint*>, ros::Time);
+// ROS2 Node
+extern std::shared_ptr<SLAM> slam;
+// Subscribers
+extern rclcpp::Subscription<msg::IMU>::SharedPtr imu_sub;
+extern rclcpp::Subscription<msg::Image>::SharedPtr img_sub;
+// Publishers
+extern rclcpp::Publisher<msg::PoseStamped>::SharedPtr pose_pub;
+extern rclcpp::Publisher<msg::Odometry>::SharedPtr odom_pub;
+extern rclcpp::Publisher<msg::VisMarker>::SharedPtr kf_markers_pub;
+extern rclcpp::Publisher<msg::PointCloud>::SharedPtr all_points_pub;
+extern rclcpp::Publisher<msg::PointCloud>::SharedPtr tracked_points_pub;
+extern rclcpp::Publisher<msg::PointCloud>::SharedPtr tracked_key_points_pub;
+extern rclcpp::Publisher<msg::Image>::SharedPtr tracking_image_pub;
+// Message Handlers
+void handle_imu_message(const msg::IMU::SharedPtr msg);
+void handle_image_message(const msg::Image::SharedPtr msg);
+// Message Publishers
+void publish_camera_pose(const Time &time);
+void publish_kf_markers(const Time &time);
+void publish_tf_transform(const Time &time);
+void publish_all_points(const Time &time);
+void publish_tracked_points(const Time &time);
+void publish_tracked_key_points(const Time &time);
+void publish_tracking_img(const Time &time);
+// Utility Functions
+cv::Mat SE3f_to_cvMat(const Sophus::SE3f &T);

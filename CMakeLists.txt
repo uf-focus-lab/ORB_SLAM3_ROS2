@@ -1,105 +1,94 @@
 cmake_minimum_required(VERSION 3.8)
-project(ORB_SLAM3_ROS2)
+project(orb_slam3)
 
+# Install directory for ORB_SLAM3 core libraries
+set(CORE_INSTALL_DIR ${PROJECT_SOURCE_DIR}/core/install)
 # Set the build type. Options are:
-LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/ORB_SLAM3/scripts)
+LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/core/scripts)
 include(compiler)
 
-find_package(OpenCV 4.2)
-if(NOT OpenCV_FOUND)
-  message(FATAL_ERROR "OpenCV 4.2 not found.")
-endif()
+# Ask OpenGL to use GLVND when available (instead of LEGACY).
+# Run "cmake --help-policy CMP0072" for policy details.
+cmake_policy(SET CMP0072 NEW)
 
-MESSAGE("OPENCV VERSION:")
-MESSAGE(${OpenCV_VERSION})
-
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS
-  tf
+set(ROS2DEPS
+  # Transforms Library
   tf2
+  # ROS2 Messages
   std_msgs
   nav_msgs
-  cv_bridge
   sensor_msgs
   geometry_msgs
+  visualization_msgs
+  # CV / Image Processing Libraries
+  cv_bridge
   image_transport
-  message_filters
-  message_generation
 )
 
-# Driver Dependencies
-find_package(OpenCV REQUIRED)
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(OpenCV REQUIRED)
+find_package(Eigen3 REQUIRED)
 # ROS2 packages
-find_package(tf REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(nav_msgs REQUIRED)
-find_package(cv_bridge REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(image_transport REQUIRED)
-find_package(message_filters REQUIRED)
-find_package(message_generation REQUIRED)
+foreach(DEP IN ITEMS ${ROS2DEPS})
+  find_package(${DEP} REQUIRED)
+endforeach()
+# ORB_SLAM3 libraires
+find_package(DBoW2 REQUIRED PATHS ${CORE_INSTALL_DIR})
+find_package(g2o REQUIRED PATHS ${CORE_INSTALL_DIR})
+find_package(Pangolin REQUIRED PATHS ${CORE_INSTALL_DIR})
+find_package(Sophus REQUIRED PATHS ${CORE_INSTALL_DIR})
+find_package(ORB_SLAM3 REQUIRED PATHS ${CORE_INSTALL_DIR})
+# Generate ROS2 Serivce Interface
+find_package(rosidl_default_generators REQUIRED)
+rosidl_generate_interfaces(${PROJECT_NAME} "srv/SaveMap.srv")
+find_package(${PROJECT_NAME} REQUIRED)
 
-generate_messages(
-  DEPENDENCIES
-  std_msgs
-)
-
-catkin_package (
-  CATKIN_DEPENDS roscpp rospy std_msgs cv_bridge image_transport tf sensor_msgs dynamic_reconfigure message_runtime
-  LIBRARIES {PROJECT_NAME} libDBoW2 libg2o
-)
-
-## Specify additional locations of header files
-## Your package locations should be listed before other locations
 include_directories(
   ${PROJECT_SOURCE_DIR}/include
-  ${PROJECT_SOURCE_DIR}/ORB_SLAM3/include
   ${OpenCV_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
+  ${Pangolin_INCLUDE_DIR}
+  ${DBoW2_INCLUDE_DIR}
+  ${ORB_SLAM3_INCLUDE_DIR}
 )
 
 link_libraries(
-  ${OpenCV_LIBS}
-  ${PROJECT_SOURCE_DIR}/ORB_SLAM3/lib/libORB_SLAM3.so
+  -lcrypto
   -lboost_system
   -lboost_serialization
-  -lcrypto
+  ${OpenCV_LIBS}
+  ${EIGEN3_LIBS}
+  ${Pangolin_LIBRARIES}
+  ${DBoW2_LIBRARIES}
+  ${G2O_LIBS}
+  ${ORB_SLAM3_LIBS}
 )
 
 set(NODES
-  ros_mono
-  ros_mono_inertial
-  ros_stereo
-  ros_stereo_inertial
-  ros_rgbd
-  ros_rgbd_inertial
+  mono_inertial
+  # ros_mono
+  # ros_mono_inertial
+  # ros_stereo
+  # ros_stereo_inertial
+  # ros_rgbd
+  # ros_rgbd_inertial
 )
 
 foreach(NODE ${NODES})
-  add_executable(${NODE} src/${NODE}.cc src/common.cc)
-  ament_target_dependencies(${NODE}
-    tf
-    tf2
-    std_msgs
-    nav_msgs
-    cv_bridge
-    sensor_msgs
-    geometry_msgs
-    image_transport
-    message_filters
-    message_generation
+  add_executable(${NODE}
+    src/${NODE}.cc
+    # src/common.cc
   )
+  ament_target_dependencies(${NODE} ${ROS2DEPS} ${PROJECT_NAME})
+  rosidl_target_interfaces(${NODE} ${PROJECT_NAME})
 endforeach()
 
-install(TARGETS ${NODES}
-  DESTINATION lib/${PROJECT_NAME}
-)
+install(TARGETS ${NODES} DESTINATION lib/${PROJECT_NAME})
+# Install submodule libraries
+# NOTE: You need to first run `make` in the ORB_SLAM3 directory
+install(DIRECTORY ${CORE_INSTALL_DIR} DESTINATION ${CMAKE_INSTALL_PREFIX})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
