@@ -7,8 +7,6 @@
   <maintainer email="zyx@z-yx.cc">Yuxuan Zhang</maintainer>
   <license>MIT</license>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
-
   <!-- Transforms Library -->
   <depend>tf2</depend>
   <!-- ROS2 Messages -->
@@ -20,14 +18,12 @@
   <!-- CV / Image Processing Libraries -->
   <depend>cv_bridge</depend>
   <depend>image_transport</depend>
-  <!-- For Generating "SaveMap" Service -->
-  <build_depend>rosidl_default_generators</build_depend>
-  <exec_depend>rosidl_default_runtime</exec_depend>
-  <member_of_group>rosidl_interface_packages</member_of_group>
+  <!-- Auto Generated Service Interfaces -->
+  <depend>orb_slam3_interfaces</depend>
 
+  <buildtool_depend>ament_cmake</buildtool_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
-
   <export>
     <build_type>ament_cmake</build_type>
   </export>

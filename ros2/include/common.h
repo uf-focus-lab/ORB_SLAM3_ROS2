@@ -22,31 +22,32 @@
 #include <rclcpp/rclcpp.hpp>               // IWYU pragma: export
 #include <sensor_msgs/image_encodings.hpp> // IWYU pragma: export
 
-#include "slam.h"
+#include "slam.h"      // IWYU pragma: export
+#include "threading.h" // IWYU pragma: export
+#include "types.h"     // IWYU pragma: export
 
 // ROS2 Node
 extern std::shared_ptr<SLAM> slam;
-// Subscribers
-extern rclcpp::Subscription<msg::IMU>::SharedPtr imu_sub;
-extern rclcpp::Subscription<msg::Image>::SharedPtr img_sub;
-// Publishers
-extern rclcpp::Publisher<msg::PoseStamped>::SharedPtr pose_pub;
-extern rclcpp::Publisher<msg::Odometry>::SharedPtr odom_pub;
-extern rclcpp::Publisher<msg::VisMarker>::SharedPtr kf_markers_pub;
-extern rclcpp::Publisher<msg::PointCloud>::SharedPtr all_points_pub;
-extern rclcpp::Publisher<msg::PointCloud>::SharedPtr tracked_points_pub;
-extern rclcpp::Publisher<msg::PointCloud>::SharedPtr tracked_key_points_pub;
-extern rclcpp::Publisher<msg::Image>::SharedPtr tracking_image_pub;
+
 // Message Handlers
 void handle_imu_message(const msg::IMU::SharedPtr msg);
 void handle_image_message(const msg::Image::SharedPtr msg);
-// Message Publishers
-void publish_camera_pose(const Time &time);
-void publish_kf_markers(const Time &time);
-void publish_tf_transform(const Time &time);
-void publish_all_points(const Time &time);
-void publish_tracked_points(const Time &time);
-void publish_tracked_key_points(const Time &time);
-void publish_tracking_img(const Time &time);
+
+// Sophus to ROS2 Message Converters
+namespace msg {
+Pose::SharedPtr camera_pose(const Header &, Sophus::SE3f &T_cw);
+VisMarker::SharedPtr kf_markers(const Header &,
+                                const std::vector<Sophus::SE3f> &kf_poses);
+Transform::SharedPtr tf_transform(const Header &, const Sophus::SE3f &T_SE3f);
+Image::SharedPtr tracking_img(const Header &, const cv::Mat &image);
+Odometry::SharedPtr body_odom(const Header &, const std::string &imu_frame_id,
+                              const Sophus::SE3f &Twb_SE3f,
+                              const Eigen::Vector3f &Vwb_E3f,
+                              const Eigen::Vector3f &ang_vel_body);
+PointCloud::SharedPtr
+from_map_point(const Header &,
+               const std::vector<ORB_SLAM3::MapPoint *> map_points);
+} // namespace msg
+
 // Utility Functions
 cv::Mat SE3f_to_cvMat(const Sophus::SE3f &T);
