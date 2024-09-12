@@ -6,6 +6,8 @@
 // =============================================================================
 
 #include "common.h"
+#include "types.h"
+#include <memory>
 #include <string>
 
 // SLAM_Node Methods
@@ -33,9 +35,13 @@ SLAM::~SLAM() {
   RCLCPP_INFO(get_logger(), "Stopping SLAM::loop thread");
   flag_term = true;
   thread->join();
+  // Save map and trajectory
+  RCLCPP_INFO(get_logger(), "Saving Map and Trajectory");
+  system->SaveMap("map.txt");
+  system->SaveKeyFrameTrajectoryEuRoC("trj.txt");
 }
 
-void SLAM::publish(Time &time, Eigen::Vector3f &Wbb) {
+void SLAM::publish(const Time &time, const Eigen::Vector3f &Wbb) {
   msg::Header header;
   header.stamp = time;
   header.frame_id = param.frame_id.world;
@@ -164,9 +170,10 @@ void SLAM::loop() {
     system = std::make_unique<ORB_SLAM3::System>(
         param.input_file.vocabulary, param.input_file.settings, sensor_type,
         param.enable_pangolin);
+    std::shared_ptr<const DataFrame> frame;
     while (!flag_term) {
       // Consume the latest frame
-      auto frame = std::move(next_frame);
+      next_frame.next(frame, true);
       if (!frame)
         continue;
       // Process next frame

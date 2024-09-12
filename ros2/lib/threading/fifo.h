@@ -1,18 +1,19 @@
+// =============================================================================
+// TODO: Add file description
+// =============================================================================
+// License: MIT
+// Author: Yuxuan Zhang (zhangyuxuan@ufl.edu)
+// =============================================================================
+
 #pragma once
 
+#include "exception.h"
+
 #include <condition_variable>
-#include <exception>
 #include <mutex>
 #include <queue>
 
-#define EXPECT_END_OF_STREAM                                                   \
-  catch (threading::EOS &) {                                                   \
-    /* Normal termination */                                                   \
-  }
-
 namespace threading {
-
-class EOS : public std::exception {};
 
 template <typename T> class FIFO {
 private:

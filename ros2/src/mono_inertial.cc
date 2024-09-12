@@ -6,7 +6,6 @@
 // =============================================================================
 
 #include "common.h"
-#include <sensor_msgs/image_encodings.hpp>
 
 int main(int argc, char *argv[]) {
   rclcpp::init(argc, argv);

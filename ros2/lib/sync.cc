@@ -10,8 +10,8 @@
 
 using namespace std::chrono_literals;
 
-Sync::Sync(rclcpp::Node *node, std::unique_ptr<DataFrame> *next_frame)
-    : node(node), next_frame(next_frame) {
+Sync::Sync(rclcpp::Node *node, DataFramePipe *frame_out)
+    : node(node), frame_out(frame_out) {
   thread = std::make_unique<std::thread>(&Sync::loop, this);
 }
 
@@ -21,19 +21,17 @@ Sync::~Sync() {
 }
 
 void Sync::handle_img_msg(msg::Image::SharedPtr img_msg) {
-  next_img_msg = img_msg;
+  img_in.write(*img_msg);
 };
 
 void Sync::handle_imu_msg(msg::IMU::SharedPtr imu_msg) {
-  imu_pipe.write(imu_msg);
+  imu_in.write(*imu_msg);
 };
 
-ORB_SLAM3::IMU::Point imu_point(msg::IMU::SharedPtr imu_msg) {
-  if (!imu_msg)
-    throw std::runtime_error("NULL pointer in IMU pipe");
-  rclcpp::Time time(imu_msg->header.stamp);
-  const auto &acc = imu_msg->linear_acceleration;
-  const auto &ang = imu_msg->angular_velocity;
+ORB_SLAM3::IMU::Point imu_point(msg::IMU imu_msg) {
+  rclcpp::Time time(imu_msg.header.stamp);
+  const auto &acc = imu_msg.linear_acceleration;
+  const auto &ang = imu_msg.angular_velocity;
   return {static_cast<float>(acc.x),
           static_cast<float>(acc.y),
           static_cast<float>(acc.z),
@@ -43,10 +41,10 @@ ORB_SLAM3::IMU::Point imu_point(msg::IMU::SharedPtr imu_msg) {
           time.seconds()};
 }
 
-msg::IMU::SharedPtr Sync::shift_imu() {
+msg::IMU Sync::shift_imu() {
   auto prev_imu_msg = next_imu_msg;
-  next_imu_msg = imu_pipe.read();
-  next_imu_time = next_imu_msg->header.stamp;
+  next_imu_msg = imu_in.read();
+  next_imu_time = next_imu_msg.header.stamp;
   return prev_imu_msg;
 }
 
@@ -57,7 +55,7 @@ void Sync::loop() {
     while (!flag_term) {
       std::this_thread::sleep_for(1ms);
       // Only look once
-      auto img_msg = next_img_msg;
+      auto img_msg = img_in.read();
       // Wait for next image message
       if (prev_img_msg == img_msg.get() || !img_msg)
         continue;
@@ -82,9 +80,7 @@ void Sync::loop() {
         RCLCPP_INFO(node->get_logger(), "Exception: %s", e.what());
         continue;
       }
-      *next_frame = std::move(frame);
-      // Record current image message as already processed
-      prev_img_msg = img_msg.get();
+      frame_out->write(*frame);
     }
   }
   EXPECT_END_OF_STREAM

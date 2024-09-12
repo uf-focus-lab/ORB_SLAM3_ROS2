@@ -30,7 +30,7 @@ typedef struct NodeParam_s {
 } NodeParam;
 
 class SLAM : public rclcpp::Node {
-  std::unique_ptr<DataFrame> next_frame;
+  DataFramePipe next_frame;
 
 public:
   // ORB_SLAM3 System Instance;
@@ -66,7 +66,7 @@ public:
   } pub;
 
   // Topic publisher utility
-  void publish(Time &time, Eigen::Vector3f &Wbb);
+  void publish(const Time &time, const Eigen::Vector3f &Wbb);
 
   // Services
   struct {

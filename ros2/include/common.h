@@ -22,9 +22,10 @@
 #include <rclcpp/rclcpp.hpp>               // IWYU pragma: export
 #include <sensor_msgs/image_encodings.hpp> // IWYU pragma: export
 
-#include "slam.h"      // IWYU pragma: export
-#include "threading.h" // IWYU pragma: export
-#include "types.h"     // IWYU pragma: export
+#include "slam.h"            // IWYU pragma: export
+#include "threading/fifo.h"  // IWYU pragma: export
+#include "threading/leaky.h" // IWYU pragma: export
+#include "types.h"           // IWYU pragma: export
 
 // ROS2 Node
 extern std::shared_ptr<SLAM> slam;

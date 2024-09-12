@@ -7,10 +7,9 @@
 
 #pragma once
 
-#include "threading.h"
+#include "threading/fifo.h"
+#include "threading/leaky.h"
 #include "types.h"
-
-#include <memory>
 
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
@@ -20,12 +19,12 @@
 class Sync {
 private:
   const rclcpp::Node *node;
-  threading::FIFO<msg::IMU::SharedPtr> imu_pipe;
+  IMUPipe imu_in;
   msg::Image *prev_img_msg = nullptr; // For comparison only, no ownership
-  msg::Image::SharedPtr next_img_msg;
-  msg::IMU::SharedPtr next_imu_msg;
+  ImagePipe img_in;
+  msg::IMU next_imu_msg;
   rclcpp::Time next_imu_time;
-  msg::IMU::SharedPtr shift_imu();
+  msg::IMU shift_imu();
 
   // Standalone thread for synchronization
   std::unique_ptr<std::thread> thread;
@@ -33,10 +32,10 @@ private:
   void loop();
 
   // Shared pointer for data output
-  std::unique_ptr<DataFrame> *next_frame;
+  DataFramePipe *frame_out;
 
 public:
-  Sync(rclcpp::Node *node, std::unique_ptr<DataFrame> *next_frame);
+  Sync(rclcpp::Node *node, DataFramePipe *frame_out);
   ~Sync();
   void handle_img_msg(msg::Image::SharedPtr img_msg);
   void handle_imu_msg(msg::IMU::SharedPtr imu_msg);

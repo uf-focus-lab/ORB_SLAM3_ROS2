@@ -46,6 +46,7 @@ find_package(ORB_SLAM3 REQUIRED PATHS ${LOCAL_INSTALL_DIR})
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_SOURCE_DIR}/lib
   ${OpenCV_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
   ${Pangolin_INCLUDE_DIR}

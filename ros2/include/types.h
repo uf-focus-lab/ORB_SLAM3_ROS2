@@ -8,6 +8,8 @@
 #pragma once
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "threading/leaky.h"
+#include "threading/fifo.h"
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -48,3 +50,7 @@ typedef struct DataFrame {
   std::vector<ORB_SLAM3::IMU::Point> imu;
   Eigen::Vector3f Wbb;
 } DataFrame;
+
+typedef threading::LeakyIO<DataFrame> DataFramePipe;
+typedef threading::LeakyIO<msg::Image> ImagePipe;
+typedef threading::FIFO<msg::IMU> IMUPipe;
