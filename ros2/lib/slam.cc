@@ -30,15 +30,16 @@ SLAM::SLAM(SensorType sensor_type)
 }
 
 SLAM::~SLAM() {
-  RCLCPP_INFO(get_logger(), "Stopping Sync Thread");
-  sync = nullptr;
-  RCLCPP_INFO(get_logger(), "Stopping SLAM::loop thread");
+  // sync->terminate();
+  RCLCPP_INFO(get_logger(), "Stopping SLAM::thread");
   flag_term = true;
-  thread->join();
-  // Save map and trajectory
-  RCLCPP_INFO(get_logger(), "Saving Map and Trajectory");
-  system->SaveMap("map.txt");
-  system->SaveKeyFrameTrajectoryEuRoC("trj.txt");
+  if (thread && thread->joinable())
+    thread->join();
+  else
+    RCLCPP_INFO(get_logger(), "SLAM::thread not joinable");
+  RCLCPP_INFO(get_logger(), "Stopping Sync::thread");
+  if (sync)
+    sync->terminate();
 }
 
 void SLAM::publish(const Time &time, const Eigen::Vector3f &Wbb) {
@@ -118,14 +119,16 @@ void SLAM::init_parameters() {
 
 void SLAM::init_topics() {
   const auto imu_msg_handler = [this](msg::IMU::SharedPtr msg) {
-    if (this->sync)
-      this->sync->handle_imu_msg(msg);
+    if (this->sync == nullptr)
+      return;
+    this->sync->handle_imu_msg(msg);
   };
   sub.imu = create_subscription<msg::IMU>("imu/get", 10, imu_msg_handler);
 
   const auto img_msg_handler = [this](msg::Image::SharedPtr msg) {
-    if (this->sync)
-      this->sync->handle_img_msg(msg);
+    if (this->sync == nullptr)
+      return;
+    this->sync->handle_img_msg(msg);
   };
   sub.img = create_subscription<msg::Image>("img/get", 10, img_msg_handler);
 
@@ -170,23 +173,34 @@ void SLAM::loop() {
     system = std::make_unique<ORB_SLAM3::System>(
         param.input_file.vocabulary, param.input_file.settings, sensor_type,
         param.enable_pangolin);
-    std::shared_ptr<const DataFrame> frame;
-    while (!flag_term) {
-      // Consume the latest frame
-      next_frame.next(frame, true);
-      if (!frame)
-        continue;
-      // Process next frame
-      auto &img = frame->img;
-      auto seconds = frame->time.seconds();
-      auto &imu = frame->imu;
-      system->TrackMonocular(img, seconds, imu);
-      publish(frame->time, frame->Wbb);
+    std::shared_ptr<const DataFrame> frame = nullptr;
+    try {
+      RCLCPP_INFO(get_logger(), "[SLAM::loop] Staring Loop ...");
+      while (!flag_term) {
+        // Consume the latest frame
+        next_frame.next(frame, true);
+        // Process next frame
+        auto &img = frame->img;
+        auto seconds = frame->time.seconds();
+        auto &imu = frame->imu;
+        RCLCPP_INFO(get_logger(), "[SLAM::loop] Frame + %lu IMU", imu.size());
+        system->TrackMonocular(img, seconds, imu);
+        publish(frame->time, frame->Wbb);
+      }
     }
+    EXPECT_END_OF_STREAM
+    next_frame.close();
+    // Save map and trajectory
+    system->SaveMap("map");
+    system->SaveTrajectoryEuRoC("trj");
   }
   EXPECT_END_OF_STREAM
   catch (std::exception &e) {
     RCLCPP_ERROR(get_logger(), "[SLAM::loop] %s", e.what());
+    return;
+  }
+  catch (...) {
+    RCLCPP_ERROR(get_logger(), "[SLAM::loop] Unknown Error");
     return;
   }
 }

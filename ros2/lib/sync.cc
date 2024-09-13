@@ -7,6 +7,8 @@
 
 #include "sync.h"
 #include "types.h"
+#include <memory>
+#include <rclcpp/logging.hpp>
 
 using namespace std::chrono_literals;
 
@@ -15,9 +17,14 @@ Sync::Sync(rclcpp::Node *node, DataFramePipe *frame_out)
   thread = std::make_unique<std::thread>(&Sync::loop, this);
 }
 
-Sync::~Sync() {
+void Sync::terminate() {
+  RCLCPP_INFO(node->get_logger(), "Terminating sync thread");
   flag_term = true;
+  img_in.close();
+  imu_in.close();
+  frame_out->close();
   thread->join();
+  RCLCPP_INFO(node->get_logger(), "Sync thread terminated");
 }
 
 void Sync::handle_img_msg(msg::Image::SharedPtr img_msg) {
@@ -41,38 +48,30 @@ ORB_SLAM3::IMU::Point imu_point(msg::IMU imu_msg) {
           time.seconds()};
 }
 
-msg::IMU Sync::shift_imu() {
-  auto prev_imu_msg = next_imu_msg;
-  next_imu_msg = imu_in.read();
-  next_imu_time = next_imu_msg.header.stamp;
-  return prev_imu_msg;
-}
-
 void Sync::loop() {
   try {
     // Load first IMU message
-    shift_imu();
+    std::shared_ptr<const msg::Image> img_msg;
     while (!flag_term) {
-      std::this_thread::sleep_for(1ms);
       // Only look once
-      auto img_msg = img_in.read();
-      // Wait for next image message
-      if (prev_img_msg == img_msg.get() || !img_msg)
-        continue;
+      img_in.next(img_msg, true);
       rclcpp::Time img_time(img_msg->header.stamp);
-      auto frame = std::make_unique<DataFrame>();
-      frame->time = img_time;
+      auto frame = DataFrame();
+      frame.time = img_time;
       // Stack all IMU messages before current image taken
-      while (next_imu_time <= img_time) {
-        const auto point = imu_point(shift_imu());
-        frame->imu.push_back(point);
-        frame->Wbb << point.w.x(), point.w.y(), point.w.z();
+      while (!imu_in.empty()) {
+        rclcpp::Time imu_time(imu_in.peek().header.stamp);
+        if (imu_time > img_time)
+          break;
+        const auto point = imu_point(imu_in.read());
+        frame.imu.push_back(point);
+        frame.Wbb << point.w.x(), point.w.y(), point.w.z();
       }
       // Synchronize IMU and Image
       try {
         // ORB_SLAM3 will convert all images to grayscale (U8).
         // Therefore there is no point to preserve the original encoding.
-        frame->img = cv_bridge::toCvShare(img_msg, "mono8")->image;
+        frame.img = cv_bridge::toCvShare(img_msg, "mono8")->image;
       } catch (cv_bridge::Exception &e) {
         RCLCPP_INFO(node->get_logger(), "cv_bridge exception: %s", e.what());
         continue;
@@ -80,8 +79,11 @@ void Sync::loop() {
         RCLCPP_INFO(node->get_logger(), "Exception: %s", e.what());
         continue;
       }
-      frame_out->write(*frame);
+      frame_out->write(frame);
     }
   }
   EXPECT_END_OF_STREAM
+  img_in.close();
+  imu_in.close();
+  frame_out->close();
 };
