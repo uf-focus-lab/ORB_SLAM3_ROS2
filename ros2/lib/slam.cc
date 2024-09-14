@@ -8,6 +8,7 @@
 #include "common.h"
 #include "types.h"
 #include <memory>
+#include <sstream>
 #include <string>
 
 // SLAM_Node Methods
@@ -41,48 +42,6 @@ SLAM::~SLAM() {
   if (sync)
     sync->terminate();
 }
-
-void SLAM::publish(const Time &time, const Eigen::Vector3f &Wbb) {
-  msg::Header header;
-  header.stamp = time;
-  header.frame_id = param.frame_id.world;
-  Sophus::SE3f Twc = system->GetCamTwc();
-  if (Twc.translation().array().isNaN().any() ||
-      Twc.rotationMatrix().array().isNaN().any())
-    return;
-  pub.pose->publish(*msg::camera_pose(header, Twc));
-  pub.transform->publish(*msg::tf_transform(header, Twc));
-  pub.kf_markers->publish(
-      *msg::kf_markers(header, system->GetAllKeyframePoses()));
-  pub.all_points->publish(
-      *msg::from_map_point(header, system->GetAllMapPoints()));
-
-  std::vector<ORB_SLAM3::MapPoint *> tracked_points;
-  for (auto const &point : system->GetTrackedMapPoints()) {
-    if (point)
-      tracked_points.push_back(point);
-  }
-  if (!tracked_points.empty())
-    pub.tracked_points->publish(*msg::from_map_point(header, tracked_points));
-
-  pub.tracking_image->publish(
-      *msg::tracking_img(header, system->GetCurrentFrame()));
-
-  // IMU-specific topics
-  if (use_imu) {
-    // Body pose and translational velocity can be obtained from ORB-SLAM3
-    Sophus::SE3f Twb = system->GetImuTwb();
-    Eigen::Vector3f Vwb = system->GetImuVwb();
-
-    // IMU provides body angular velocity in body frame (Wbb) which is
-    // transformed to world frame (Wwb)
-    Sophus::Matrix3f Rwb = Twb.rotationMatrix();
-    Eigen::Vector3f Wwb = Rwb * Wbb;
-    pub.imu.transform->publish(*msg::tf_transform(header, Twb));
-    pub.imu.odom->publish(
-        *msg::body_odom(header, param.frame_id.imu, Twb, Vwb, Wwb));
-  }
-};
 
 void normalize_path(std::string &path) {
   // Change to absolute path
@@ -171,20 +130,23 @@ void SLAM::init_services() {
 void SLAM::loop() {
   try { // Initialize ORB_SLAM3
     system = std::make_unique<ORB_SLAM3::System>(
-        param.input_file.vocabulary, param.input_file.settings, sensor_type,
-        param.enable_pangolin);
+        param.input_file.vocabulary, param.input_file.settings,
+        ORB_SLAM3::System::MONOCULAR, param.enable_pangolin);
     std::shared_ptr<const DataFrame> frame = nullptr;
     try {
       RCLCPP_INFO(get_logger(), "[SLAM::loop] Staring Loop ...");
       while (!flag_term) {
+        std::stringstream ss;
         // Consume the latest frame
         next_frame.next(frame, true);
         // Process next frame
         auto &img = frame->img;
         auto seconds = frame->time.seconds();
         auto &imu = frame->imu;
-        RCLCPP_INFO(get_logger(), "[SLAM::loop] Frame + %lu IMU", imu.size());
+        ss << "Frame IMU(" << imu.size() << ")" << " ";
         system->TrackMonocular(img, seconds, imu);
+        ss << "State(" << system->GetTrackingStateName() << ")";
+        RCLCPP_INFO(get_logger(), "[SLAM::loop] %s", ss.str().c_str());
         publish(frame->time, frame->Wbb);
       }
     }
@@ -204,3 +166,45 @@ void SLAM::loop() {
     return;
   }
 }
+
+void SLAM::publish(const Time &time, const Eigen::Vector3f &Wbb) {
+  msg::Header header;
+  header.stamp = time;
+  header.frame_id = param.frame_id.world;
+  Sophus::SE3f Twc = system->GetCamTwc();
+  if (Twc.translation().array().isNaN().any() ||
+      Twc.rotationMatrix().array().isNaN().any())
+    return;
+  pub.pose->publish(*msg::camera_pose(header, Twc));
+  pub.transform->publish(*msg::tf_transform(header, Twc));
+  pub.kf_markers->publish(
+      *msg::kf_markers(header, system->GetAllKeyframePoses()));
+  pub.all_points->publish(
+      *msg::from_map_point(header, system->GetAllMapPoints()));
+
+  std::vector<ORB_SLAM3::MapPoint *> tracked_points;
+  for (auto const &point : system->GetTrackedMapPoints()) {
+    if (point)
+      tracked_points.push_back(point);
+  }
+  if (!tracked_points.empty())
+    pub.tracked_points->publish(*msg::from_map_point(header, tracked_points));
+
+  pub.tracking_image->publish(
+      *msg::tracking_img(header, system->GetCurrentFrame()));
+
+  // IMU-specific topics
+  if (use_imu) {
+    // Body pose and translational velocity can be obtained from ORB-SLAM3
+    Sophus::SE3f Twb = system->GetImuTwb();
+    Eigen::Vector3f Vwb = system->GetImuVwb();
+
+    // IMU provides body angular velocity in body frame (Wbb) which is
+    // transformed to world frame (Wwb)
+    Sophus::Matrix3f Rwb = Twb.rotationMatrix();
+    Eigen::Vector3f Wwb = Rwb * Wbb;
+    pub.imu.transform->publish(*msg::tf_transform(header, Twb));
+    pub.imu.odom->publish(
+        *msg::body_odom(header, param.frame_id.imu, Twb, Vwb, Wwb));
+  }
+};

@@ -65,8 +65,7 @@ msg::Transform::SharedPtr msg::tf_transform(const msg::Header &header,
 
 msg::Image::SharedPtr msg::tracking_img(const msg::Header &header,
                                         const cv::Mat &image) {
-  const auto msg = cv_bridge::CvImage(header, "bgr8", image).toImageMsg();
-  msg->header = header;
+  const auto msg = cv_bridge::CvImage(header, "mono8", image).toImageMsg();
   return msg;
 };
 
