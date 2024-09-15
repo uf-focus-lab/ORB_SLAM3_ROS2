@@ -71,7 +71,7 @@ void Sync::loop() {
       try {
         // ORB_SLAM3 will convert all images to grayscale (U8).
         // Therefore there is no point to preserve the original encoding.
-        frame.img = cv_bridge::toCvShare(img_msg, "mono8")->image;
+        frame.img = cv_bridge::toCvShare(img_msg, "mono8")->image.clone();
       } catch (cv_bridge::Exception &e) {
         RCLCPP_INFO(node->get_logger(), "cv_bridge exception: %s", e.what());
         continue;
