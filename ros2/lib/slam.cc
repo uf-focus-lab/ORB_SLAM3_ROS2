@@ -134,7 +134,7 @@ void SLAM::loop() {
         ORB_SLAM3::System::MONOCULAR, param.enable_pangolin);
     std::shared_ptr<const DataFrame> frame = nullptr;
     try {
-      RCLCPP_INFO(get_logger(), "[SLAM::loop] Staring Loop ...");
+      RCLCPP_INFO(get_logger(), "[SLAM::loop] Starting Loop ...");
       while (!flag_term) {
         std::stringstream ss;
         // Consume the latest frame
