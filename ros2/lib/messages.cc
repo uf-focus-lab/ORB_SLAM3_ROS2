@@ -65,7 +65,16 @@ msg::Transform::SharedPtr msg::tf_transform(const msg::Header &header,
 
 msg::Image::SharedPtr msg::tracking_img(const msg::Header &header,
                                         const cv::Mat &image) {
-  const auto msg = cv_bridge::CvImage(header, "mono8", image).toImageMsg();
+  std::string encoding;
+  if (image.channels() == 1)
+    encoding = "mono8";
+  else if (image.channels() == 3)
+    encoding = "bgr8";
+  else if (image.channels() == 4)
+    encoding = "bgra8";
+  else
+    throw std::runtime_error("Unsupported image format");
+  const auto msg = cv_bridge::CvImage(header, encoding, image).toImageMsg();
   return msg;
 };
 

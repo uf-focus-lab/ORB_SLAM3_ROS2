@@ -28,7 +28,7 @@ void Sync::terminate() {
 }
 
 void Sync::handle_img_msg(msg::Image::SharedPtr img_msg) {
-  img_in.write(*img_msg);
+  img_in.write(img_msg);
 };
 
 void Sync::handle_imu_msg(msg::IMU::SharedPtr imu_msg) {
@@ -51,10 +51,9 @@ ORB_SLAM3::IMU::Point imu_point(msg::IMU imu_msg) {
 void Sync::loop() {
   try {
     // Load first IMU message
-    std::shared_ptr<const msg::Image> img_msg;
     while (!flag_term) {
       // Only look once
-      img_in.next(img_msg, true);
+      auto img_msg = img_in.read();
       rclcpp::Time img_time(img_msg->header.stamp);
       auto frame = DataFrame();
       frame.time = img_time;

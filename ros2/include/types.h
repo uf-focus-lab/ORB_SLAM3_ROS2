@@ -52,5 +52,5 @@ typedef struct DataFrame {
 } DataFrame;
 
 typedef threading::LeakyIO<DataFrame> DataFramePipe;
-typedef threading::LeakyIO<msg::Image> ImagePipe;
+typedef threading::FIFO<msg::Image::SharedPtr> ImagePipe;
 typedef threading::FIFO<msg::IMU> IMUPipe;
