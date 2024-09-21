@@ -6,6 +6,7 @@
 // =============================================================================
 
 #include "sync.h"
+#include "ImuTypes.h"
 #include "types.h"
 #include <memory>
 #include <rclcpp/logging.hpp>
@@ -17,13 +18,14 @@ Sync::Sync(rclcpp::Node *node, DataFramePipe *frame_out)
   thread = std::make_unique<std::thread>(&Sync::loop, this);
 }
 
-void Sync::terminate() {
+Sync::~Sync() {
   RCLCPP_INFO(node->get_logger(), "Terminating sync thread");
   flag_term = true;
   img_in.close();
   imu_in.close();
   frame_out->close();
-  thread->join();
+  if (thread)
+    thread->join();
   RCLCPP_INFO(node->get_logger(), "Sync thread terminated");
 }
 
@@ -62,9 +64,9 @@ void Sync::loop() {
         rclcpp::Time imu_time(imu_in.peek().header.stamp);
         if (imu_time > img_time)
           break;
-        const auto point = imu_point(imu_in.read());
-        frame.imu.push_back(point);
-        frame.Wbb << point.w.x(), point.w.y(), point.w.z();
+        auto imu = imu_point(imu_in.read());
+        frame.imu.push_back(imu);
+        frame.Wbb << imu.w.x(), imu.w.y(), imu.w.z();
       }
       // Synchronize IMU and Image
       try {

@@ -13,34 +13,31 @@
 
 // SLAM_Node Methods
 SLAM::SLAM(SensorType sensor_type)
-    : Node("ORB_SLAM3"), sensor_type(sensor_type),
-      use_imu(sensor_type == ORB_SLAM3::System::IMU_MONOCULAR ||
-              sensor_type == ORB_SLAM3::System::IMU_STEREO ||
-              sensor_type == ORB_SLAM3::System::IMU_RGBD),
-      use_stereo(sensor_type == ORB_SLAM3::System::STEREO ||
-                 sensor_type == ORB_SLAM3::System::IMU_STEREO) {
+    : Node("ORB_SLAM3"), sensor_type(sensor_type) {
   RCLCPP_INFO(get_logger(), "Launching from: %s", getcwd(nullptr, 0));
+  param.use_stereo =
+      (sensor_type & SensorType::CAMERA_MASK) == SensorType::STEREO;
   init_parameters();
   init_topics();
   init_services();
+  // Update Sensor Type based on user supplied parameters
+  if (param.use_imu)
+    sensor_type = static_cast<SensorType>(sensor_type | SensorType::USE_IMU);
   // Start sync thread only if IMU is enabled
-  if (use_imu)
-    sync = std::make_unique<Sync>(this, &next_frame);
+  sync = std::make_unique<Sync>(this, &next_frame);
   // Start main SLAM loop
   thread = std::make_unique<std::thread>(&SLAM::loop, this);
 }
 
 SLAM::~SLAM() {
-  // sync->terminate();
-  RCLCPP_INFO(get_logger(), "Stopping SLAM::thread");
   flag_term = true;
-  if (thread && thread->joinable())
+  next_frame.close();
+  // Stop sync thread if enabled
+  std::cerr << "Stopping sync thread" << std::endl;
+  sync = nullptr;
+  RCLCPP_INFO(get_logger(), "Waiting for SLAM::thread");
+  if (thread)
     thread->join();
-  else
-    RCLCPP_INFO(get_logger(), "SLAM::thread not joinable");
-  RCLCPP_INFO(get_logger(), "Stopping Sync::thread");
-  if (sync)
-    sync->terminate();
 }
 
 void normalize_path(std::string &path) {
@@ -56,6 +53,8 @@ void normalize_path(std::string &path) {
 void SLAM::init_parameters() {
   declare_parameter<bool>("enable_pangolin", false);
   get_parameter("enable_pangolin", param.enable_pangolin);
+  declare_parameter<bool>("use_imu", false);
+  get_parameter("use_imu", param.use_imu);
   declare_parameter("voc_file", "");
   if (!get_parameter("voc_file", param.input_file.vocabulary)) {
     RCLCPP_ERROR(get_logger(), "parameter <voc_file> not set");
@@ -78,16 +77,14 @@ void SLAM::init_parameters() {
 
 void SLAM::init_topics() {
   const auto imu_msg_handler = [this](msg::IMU::SharedPtr msg) {
-    if (this->sync == nullptr)
-      return;
-    this->sync->handle_imu_msg(msg);
+    if (this->sync)
+      this->sync->handle_imu_msg(msg);
   };
   sub.imu = create_subscription<msg::IMU>("imu/get", 10, imu_msg_handler);
 
   const auto img_msg_handler = [this](msg::Image::SharedPtr msg) {
-    if (this->sync == nullptr)
-      return;
-    this->sync->handle_img_msg(msg);
+    if (this->sync)
+      this->sync->handle_img_msg(msg);
   };
   sub.img = create_subscription<msg::Image>("img/get", 10, img_msg_handler);
 
@@ -98,7 +95,7 @@ void SLAM::init_topics() {
   pub.tracked_points = create_publisher<msg::PointCloud>("tracked_points", 10);
   pub.tracking_image = create_publisher<msg::Image>("tracking_image", 10);
   // IMU-specific topics
-  if (use_imu) {
+  if (param.use_imu) {
     pub.imu.odom = create_publisher<msg::Odometry>("imu/odom", 10);
     pub.imu.transform = create_publisher<msg::Transform>("imu/transform", 10);
   }
@@ -130,8 +127,8 @@ void SLAM::init_services() {
 void SLAM::loop() {
   try { // Initialize ORB_SLAM3
     system = std::make_unique<ORB_SLAM3::System>(
-        param.input_file.vocabulary, param.input_file.settings,
-        ORB_SLAM3::System::MONOCULAR, param.enable_pangolin);
+        param.input_file.vocabulary, param.input_file.settings, sensor_type,
+        param.enable_pangolin);
     std::shared_ptr<const DataFrame> frame = nullptr;
     try {
       RCLCPP_INFO(get_logger(), "[SLAM::loop] Starting Loop ...");
@@ -157,14 +154,14 @@ void SLAM::loop() {
     system->SaveTrajectoryEuRoC("trj");
   }
   EXPECT_END_OF_STREAM
-  catch (std::exception &e) {
-    RCLCPP_ERROR(get_logger(), "[SLAM::loop] %s", e.what());
-    return;
-  }
-  catch (...) {
-    RCLCPP_ERROR(get_logger(), "[SLAM::loop] Unknown Error");
-    return;
-  }
+  // catch (std::exception &e) {
+  //   RCLCPP_ERROR(get_logger(), "[SLAM::loop] Exception: %s", e.what());
+  //   return;
+  // }
+  // catch (...) {
+  //   RCLCPP_ERROR(get_logger(), "[SLAM::loop] Unknown Error");
+  //   return;
+  // }
 }
 
 void SLAM::publish(const Time &time, const Eigen::Vector3f &Wbb) {
@@ -179,13 +176,29 @@ void SLAM::publish(const Time &time, const Eigen::Vector3f &Wbb) {
   pub.transform->publish(*msg::tf_transform(header, Twc));
   pub.kf_markers->publish(
       *msg::kf_markers(header, system->GetAllKeyframePoses()));
-  pub.all_points->publish(
-      *msg::from_map_point(header, system->GetAllMapPoints()));
 
-  std::vector<ORB_SLAM3::MapPoint *> tracked_points;
+  auto T_bc = system->GetSettings().Tbc();
+
+  std::vector<Eigen::Vector3f> all_map_points;
+  for (auto const &point : system->GetAllMapPoints()) {
+    if (!point)
+      continue;
+    Eigen::Vector4f p;
+    p << point->GetWorldPos(), 1;
+    p = T_bc * p;
+    all_map_points.push_back(p.head<3>());
+  }
+  if (!all_map_points.empty())
+    pub.all_points->publish(*msg::from_map_point(header, all_map_points));
+
+  std::vector<Eigen::Vector3f> tracked_points;
   for (auto const &point : system->GetTrackedMapPoints()) {
-    if (point)
-      tracked_points.push_back(point);
+    if (!point)
+      continue;
+    Eigen::Vector4f p;
+    p << point->GetWorldPos(), 1;
+    p = T_bc * p;
+    tracked_points.push_back(p.head<3>());
   }
   if (!tracked_points.empty())
     pub.tracked_points->publish(*msg::from_map_point(header, tracked_points));
@@ -194,7 +207,7 @@ void SLAM::publish(const Time &time, const Eigen::Vector3f &Wbb) {
       *msg::tracking_img(header, system->GetCurrentFrame()));
 
   // IMU-specific topics
-  if (use_imu) {
+  if (param.use_imu) {
     // Body pose and translational velocity can be obtained from ORB-SLAM3
     Sophus::SE3f Twb = system->GetImuTwb();
     Eigen::Vector3f Vwb = system->GetImuVwb();

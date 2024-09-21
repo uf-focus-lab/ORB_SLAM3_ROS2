@@ -66,7 +66,7 @@ link_libraries(
   ${ORB_SLAM3_LIBS}
 )
 
-set(NODES mono_inertial)
+set(NODES monocular)
 FILE(GLOB LIB_SRCS lib/*.cc)
 foreach(NODE ${NODES})
   add_executable(${NODE}

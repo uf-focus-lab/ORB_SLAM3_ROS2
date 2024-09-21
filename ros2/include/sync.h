@@ -31,7 +31,7 @@ private:
 
 public:
   Sync(rclcpp::Node *node, DataFramePipe *frame_out);
-  void terminate();
+  ~Sync();
   void handle_img_msg(msg::Image::SharedPtr img_msg);
   void handle_imu_msg(msg::IMU::SharedPtr imu_msg);
 };

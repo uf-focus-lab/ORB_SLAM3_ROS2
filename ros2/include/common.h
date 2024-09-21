@@ -46,8 +46,7 @@ Odometry::SharedPtr body_odom(const Header &, const std::string &imu_frame_id,
                               const Eigen::Vector3f &Vwb_E3f,
                               const Eigen::Vector3f &ang_vel_body);
 PointCloud::SharedPtr
-from_map_point(const Header &,
-               const std::vector<ORB_SLAM3::MapPoint *> map_points);
+from_map_point(const Header &, const std::vector<Eigen::Vector3f> map_points);
 } // namespace msg
 
 // Utility Functions

@@ -6,7 +6,7 @@
 #include <memory>
 
 #include <Eigen/Dense>
-#include <ORB_SLAM3/ORB_SLAM3.h>
+#include <ORB_SLAM3/System.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/opencv.hpp>
@@ -14,10 +14,12 @@
 #include <sensor_msgs/image_encodings.hpp>
 #include <sophus/se3.hpp>
 
-typedef const enum ORB_SLAM3::System::eSensor SensorType;
+typedef ORB_SLAM3::SensorType SensorType;
 
 typedef struct NodeParam_s {
-  bool enable_pangolin;
+  bool use_imu = false;
+  bool use_stereo = false;
+  bool enable_pangolin = false;
   struct {
     std::string vocabulary;
     std::string settings;
@@ -30,16 +32,15 @@ typedef struct NodeParam_s {
 } NodeParam;
 
 class SLAM : public rclcpp::Node {
+protected:
   DataFramePipe next_frame;
 
-public:
   // ORB_SLAM3 System Instance;
   std::unique_ptr<ORB_SLAM3::System> system;
   std::unique_ptr<Sync> sync;
 
   // Startup parameters
-  const SensorType sensor_type;
-  const bool use_imu, use_stereo;
+  SensorType sensor_type;
 
   // Configurable entries
   NodeParam param;
@@ -80,7 +81,6 @@ public:
 
   std::unique_ptr<std::thread> thread;
   bool flag_term = false;
-
   void loop();
 
 public:

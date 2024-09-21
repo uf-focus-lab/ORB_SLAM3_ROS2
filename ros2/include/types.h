@@ -21,7 +21,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 
-#include <ORB_SLAM3/ORB_SLAM3.h>
+#include <ORB_SLAM3/System.h>
 
 using Time = rclcpp::Time;
 

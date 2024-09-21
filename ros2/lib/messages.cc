@@ -7,6 +7,7 @@
 
 #include "common.h"
 #include "types.h"
+#include <memory>
 
 msg::Pose::SharedPtr msg::camera_pose(const msg::Header &header,
                                       Sophus::SE3f &Twc) {
@@ -102,9 +103,13 @@ msg::Odometry::SharedPtr msg::body_odom(const msg::Header &header,
   return msg;
 };
 
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/point_field.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+
 msg::PointCloud::SharedPtr
 msg::from_map_point(const msg::Header &header,
-                    const std::vector<ORB_SLAM3::MapPoint *> map_points) {
+                    const std::vector<Eigen::Vector3f> map_points) {
 
   static const std::vector<std::string> channels = {"x", "y", "z"};
   typedef float F32;
@@ -114,32 +119,41 @@ msg::from_map_point(const msg::Header &header,
 
   const auto msg = std::make_shared<msg::PointCloud>();
   msg->header = header;
-  msg->height = 1;
+
+  msg->height = channels.size();
+  msg->width = map_points.size();
+
   msg->is_dense = true;
   msg->is_bigendian = false;
-  msg->width = map_points.size();
+
   msg->point_step = channels.size() * sizeof(F32);
   msg->row_step = msg->point_step * msg->width;
   msg->fields.resize(0);
-  msg::PointField field;
-  field.count = 1;
-  field.datatype = msg::PointField::FLOAT32;
-  field.offset = msg->fields.size() * sizeof(F32);
+
+  decltype(msg::PointField::offset) offset = 0;
   for (auto &channel : channels) {
+    msg::PointField field;
+    field.count = 1;
+    field.datatype = msg::PointField::FLOAT32;
+    field.offset = offset;
+    offset += sizeof(F32);
     field.name = channel;
     msg->fields.push_back(field);
   }
+
   msg->data.resize(msg->row_step * msg->height);
-  Point *cloud_data_ptr = (Point *)(void *)(&msg->data[0]);
-  for (const auto p : map_points) {
-    if (!p)
-      continue;
-    Eigen::Vector3f P3Dw = p->GetWorldPos();
-    cloud_data_ptr->x = P3Dw.x();
-    cloud_data_ptr->y = P3Dw.y();
-    cloud_data_ptr->z = P3Dw.z();
-    cloud_data_ptr++;
+  sensor_msgs::PointCloud2Iterator<F32> iterX(*msg, "x");
+  sensor_msgs::PointCloud2Iterator<F32> iterY(*msg, "y");
+  sensor_msgs::PointCloud2Iterator<F32> iterZ(*msg, "z");
+  // iterate over the message and populate the fields.
+  for (auto &p : map_points) {
+    *iterX = p.x();
+    *iterY = p.y();
+    *iterZ = p.z();
+    ++iterX;
+    ++iterY;
+    ++iterZ;
   }
-  msg->data.resize((unsigned char *)cloud_data_ptr - &msg->data[0]);
+
   return msg;
 }
